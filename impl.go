@@ -207,10 +207,36 @@ type Func struct {
 	Res    []Param
 }
 
+// Equal checks function for compatibility.
+func (f Func) Equal(t Func) bool {
+	if len(f.Params) != len(t.Params) {
+		return false
+	}
+	if len(f.Res) != len(t.Res) {
+		return false
+	}
+	for i := range f.Params {
+		if !f.Params[i].Equal(t.Params[i]) {
+			return false
+		}
+	}
+	for i := range f.Res {
+		if !f.Res[i].Equal(t.Res[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // Param represents a parameter in a function or method signature.
 type Param struct {
 	Name string
 	Type string
+}
+
+// Equal checks parameter for compatibility.
+func (p Param) Equal(t Param) bool {
+	return p.Type == t.Type
 }
 
 func (p Pkg) funcsig(f *ast.Field) Func {
@@ -327,10 +353,12 @@ func main() {
 		os.Exit(2)
 	}
 
-	recv, iface := flag.Arg(0), flag.Arg(1)
+	recv := flag.Arg(0)
 	if !validReceiver(recv) {
 		fatal(fmt.Sprintf("invalid receiver: %q", recv))
 	}
+
+	ifaceList := flag.Args()[1:]
 
 	if *flagSrcDir == "" {
 		if dir, err := os.Getwd(); err == nil {
@@ -338,12 +366,28 @@ func main() {
 		}
 	}
 
-	fns, err := funcs(iface, *flagSrcDir)
-	if err != nil {
-		fatal(err)
+	var fnsAll []Func
+	usedNames := make(map[string]Func, 0)
+
+	for _, iface := range ifaceList {
+		fns, err := funcs(iface, *flagSrcDir)
+		if err != nil {
+			fatal(err)
+		}
+		for _, fn := range fns {
+			existingFn, ok := usedNames[fn.Name]
+			if ok {
+				if !existingFn.Equal(fn) {
+					fatal(fmt.Errorf("mathod name %s is reused", fn.Name))
+				}
+			} else {
+				usedNames[fn.Name] = fn
+				fnsAll = append(fnsAll, fn)
+			}
+		}
 	}
 
-	src := genStubs(recv, fns)
+	src := genStubs(recv, fnsAll)
 	fmt.Print(string(src))
 }
 
