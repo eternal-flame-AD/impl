@@ -102,6 +102,7 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 type Pkg struct {
 	*build.Package
 	*token.FileSet
+	AbsPath string
 }
 
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
@@ -128,7 +129,7 @@ func typeSpec(path string, id string, srcDir string) (Pkg, *ast.TypeSpec, error)
 				if spec.Name.Name != id {
 					continue
 				}
-				return Pkg{Package: pkg, FileSet: fset}, spec, nil
+				return Pkg{Package: pkg, FileSet: fset, AbsPath: path}, spec, nil
 			}
 		}
 	}
@@ -148,7 +149,7 @@ func (p Pkg) gofmt(e ast.Expr) string {
 // 	fullType(Handler) => "http.Handler"
 // 	fullType(io.Reader) => "io.Reader"
 // 	fullType(*Request) => "*http.Request"
-func (p Pkg) fullType(e ast.Expr) string {
+func (p Pkg) fullType(e ast.Expr, abs bool) string {
 	ast.Inspect(e, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.Ident:
@@ -157,7 +158,11 @@ func (p Pkg) fullType(e ast.Expr) string {
 			// the type isn't exported, there's no point trying
 			// to implement it anyway.
 			if n.IsExported() {
-				n.Name = p.Package.Name + "." + n.Name
+				if abs {
+					n.Name = p.AbsPath + "." + n.Name
+				} else {
+					n.Name = p.Package.Name + "." + n.Name
+				}
 			}
 		case *ast.SelectorExpr:
 			return false
@@ -169,7 +174,7 @@ func (p Pkg) fullType(e ast.Expr) string {
 
 func (p Pkg) params(field *ast.Field) []Param {
 	var params []Param
-	typ := p.fullType(field.Type)
+	typ := p.fullType(field.Type, false)
 	for _, name := range field.Names {
 		params = append(params, Param{Name: name.Name, Type: typ})
 	}
@@ -254,7 +259,7 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	for _, fndecl := range idecl.Methods.List {
 		if len(fndecl.Names) == 0 {
 			// Embedded interface: recurse
-			embedded, err := funcs(p.fullType(fndecl.Type), srcDir)
+			embedded, err := funcs(p.fullType(fndecl.Type, true), srcDir)
 			if err != nil {
 				return nil, err
 			}
