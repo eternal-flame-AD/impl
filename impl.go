@@ -202,6 +202,7 @@ type Method struct {
 
 // Func represents a function signature.
 type Func struct {
+	For    string
 	Name   string
 	Params []Param
 	Res    []Param
@@ -303,12 +304,18 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 		}
 
 		fn := p.funcsig(fndecl)
+		if p.Dir != *flagSrcDir {
+			fn.For = p.Name + "." + id
+		} else {
+			fn.For = id
+		}
 		fns = append(fns, fn)
 	}
 	return fns, nil
 }
 
-const stub = "func ({{.Recv}}) {{.Name}}" +
+const stub = "// {{.Name}} implements {{.For}}\n" +
+	"func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
 	"{\n" + "panic(\"not implemented\")" + "}\n\n"
